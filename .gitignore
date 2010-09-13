@@ -1,0 +1,8 @@
+*.[oa]
+*~
+*.log
+build/
+*.pyc
+*.tcl
+*.profilestats
+*.prof
