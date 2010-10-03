@@ -3,7 +3,9 @@ import time
 
 def estimate(file, s=5):
     """Estimates the amount of focus of an image file.
-    Returns a real number: lower values indicate better focus.
+    Returns a real number: higher values indicate better focus.
+    Bug: a high-contrast, blurry image can be considered with better focus
+    than a low-contrast, perfectly focused image.
     """
     im = Image.open(file).convert("L")
     w,h = im.size
