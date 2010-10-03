@@ -1,18 +1,7 @@
-import piggyphoto as pp
-import os
-import time
+import piggyphoto
 
-C = pp.camera()
-
-try:
-    C.init()
-except:
-    os.system("gvfs-mount -s gphoto2")
-    time.sleep(1)
-    C.init()
+C = piggyphoto.camera()
 
 print C.abilities
-for i in range(100):
-    f = C.capture_preview('%d.jpg' % i)
-print "done"
-
+C.capture_preview('preview.jpg')
+C.capture_image('snap.jpg')
