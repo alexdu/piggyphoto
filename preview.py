@@ -21,8 +21,6 @@ picture = pygame.image.load("preview.jpg")
 pygame.display.set_mode(picture.get_size())
 main_surface = pygame.display.get_surface()
 
-
-
 while not quit_pressed():
     C.capture_preview('preview.jpg')
     show("preview.jpg")

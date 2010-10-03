@@ -3,6 +3,8 @@ import piggyphoto as pp
 import os
 import time
 
+# doesn't work...
+
 C = pp.camera()
 C.leave_locked()
 

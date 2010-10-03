@@ -6,3 +6,5 @@ build/
 *.tcl
 *.profilestats
 *.prof
+*.html
+*.jpg
