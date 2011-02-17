@@ -611,7 +611,7 @@ class cameraWidget(object):
 
     def get_child_by_name(self, name):
         w = cameraWidget()
-        check(gp.gp_widget_get_child_by_label(self._w, str(name), PTR(w._w)))
+        check(gp.gp_widget_get_child_by_name(self._w, str(name), PTR(w._w)))
         return w
         
     def _get_children(self):
