@@ -21,18 +21,17 @@ gp = ctypes.CDLL(libgphoto2dll)
 context = gp.gp_context_new()
 
 def library_version(verbose = True):
+    gp.gp_library_version.restype = ctypes.POINTER(ctypes.c_char_p)
     if not verbose:
         arrText = gp.gp_library_version(GP_VERSION_SHORT)
     else:
         arrText = gp.gp_library_version(GP_VERSION_VERBOSE)
 
-    v = ""
-    while True:
-        x = ctypes.c_char_p.from_address(arrText)
-        if x.value is None:
+    v = ''
+    for s in arrText:
+        if s is None:
             break
-        v += x.value + "\n"
-        arrText += ctypes.sizeof(ctypes.c_void_p)
+        v += '%s\n' % s
     return v
 
 import os, string, time
@@ -335,13 +334,35 @@ class camera(object):
         cfg = self.config
         self._list_config(cfg, cfglist, cfg.name)
         return cfglist
-    
-        
+
+    @staticmethod
+    def _autodetect(l):
+        # Not everyone has gp_camera_autodetect(), so implemented here.
+
+        xlist = cameraList()
+
+        il = portInfoList()
+
+        al = cameraAbilitiesList()
+        al.detect(il, xlist)
+
+        for name, value in xlist.toList():
+            if value.startswith('usb:'):
+                l.append(name, value)
+
+        del al
+        del il
+        del xlist
     
     @staticmethod
     def autodetect():
         l = cameraList()
-        gp.gp_camera_autodetect(l._l, context)
+        if hasattr(gp, 'gp_camera_autodetect'):
+            print 'has autodetect'
+            gp.gp_camera_autodetect(l._l, context)
+        else:
+            print 'no autodetect'
+            camera._autodetect(l)
         return l.toList()
         
     def ptp_canon_eos_requestdevicepropvalue(self, prop):
@@ -392,6 +413,19 @@ class cameraFile:
     name = property(_get_name, _set_name)
     
     # TODO: new_from_fd (?), new_from_handler (?), mime_tipe, mtime, detect_mime_type, adjust_name_for_mime_type, data_and_size, append, slurp, python file object?
+
+class cameraAbilitiesList():
+    _l = ctypes.c_void_p()
+
+    def __init__(self):
+        check(gp.gp_abilities_list_new(PTR(self._l)))
+        check(gp.gp_abilities_list_load(self._l, context))
+
+    def __del__(self):
+        check(gp.gp_abilities_list_free(self._l))
+
+    def detect(self, il, l):
+        check(gp.gp_abilities_list_detect(self._l, il._l, l._l, context))
     
 class cameraAbilities(object):
     _ab = CameraAbilities()
@@ -416,6 +450,18 @@ class cameraAbilities(object):
     library = property(lambda self: self._ab.library, None)
     id = property(lambda self: self._ab.id, None)
 
+class portInfoList():
+    _l = ctypes.c_void_p()
+
+    def __init__(self):
+        check(gp.gp_port_info_list_new(PTR(self._l)))
+        check(gp.gp_port_info_list_load(self._l))
+
+    def __del__(self):
+        check(gp.gp_port_info_list_free(self._l))
+
+    def count(self):
+        return gp.gp_port_info_list_count(self._l)
 
 class cameraList():
     _l = ctypes.c_void_p()
@@ -429,6 +475,7 @@ class cameraList():
         check(gp.gp_list_ref(self._l))
 
     def __del__(self):
+        # this fails in gphoto 2.4.6
         check(gp.gp_list_free(self._l))
 
     def reset(self):
