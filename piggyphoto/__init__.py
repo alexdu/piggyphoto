@@ -476,7 +476,8 @@ class cameraList():
 
     def __del__(self):
         # this fails in gphoto 2.4.6
-        check(gp.gp_list_free(self._l))
+        #check(gp.gp_list_free(self._l))
+        pass
 
     def reset(self):
         check(gp.gp_list_free(self._l))
