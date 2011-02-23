@@ -358,10 +358,8 @@ class camera(object):
     def autodetect():
         l = cameraList()
         if hasattr(gp, 'gp_camera_autodetect'):
-            print 'has autodetect'
             gp.gp_camera_autodetect(l._l, context)
         else:
-            print 'no autodetect'
             camera._autodetect(l)
         return l.toList()
         
