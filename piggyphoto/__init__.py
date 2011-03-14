@@ -488,7 +488,7 @@ class cameraList(object):
             if hasattr(gp, 'gp_camera_autodetect'):
                 gp.gp_camera_autodetect(self._l, context)
             else:
-                # this is for stable versions of gphoto <= 2.10.1
+                # this is for stable versions of gphoto <= 2.4.10.1
                 xlist = cameraList()
                 il = portInfoList()
                 il.count()
