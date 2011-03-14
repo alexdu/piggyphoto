@@ -11,28 +11,37 @@
 retries = 1
 
 # This is run if gp_camera_init returns -60 (Could not lock the device) and retries >= 1.
-unmount_cmd = 'gvfs-mount -s gphoto2' 
+unmount_cmd = 'gvfs-mount -s gphoto2'
 
 #libgphoto2dll = 'libgphoto2.so.2.4.0'
-libgphoto2dll = 'libgphoto2.so'
+#libgphoto2dll = 'libgphoto2.so'
+#libgphoto2dll = '/usr/lib/libgphoto2.so'
+# 2.4.8
+libgphoto2dll = '/usr/local/lib/libgphoto2.so.2'
+# SVN
+libgphoto2dll = '/usr/local/lib/libgphoto2.so.6'
 
 import ctypes
+import ctypes.util
 gp = ctypes.CDLL(libgphoto2dll)
 context = gp.gp_context_new()
 
+c = ctypes.CDLL(ctypes.util.find_library('c'))
+c.malloc.argtypes = [ctypes.c_long]
+c.malloc.restype = ctypes.c_void_p
+
 def library_version(verbose = True):
+    gp.gp_library_version.restype = ctypes.POINTER(ctypes.c_char_p)
     if not verbose:
         arrText = gp.gp_library_version(GP_VERSION_SHORT)
     else:
         arrText = gp.gp_library_version(GP_VERSION_VERBOSE)
 
-    v = ""
-    while True:
-        x = ctypes.c_char_p.from_address(arrText)
-        if x.value is None:
+    v = ''
+    for s in arrText:
+        if s is None:
             break
-        v += x.value + "\n"
-        arrText += ctypes.sizeof(ctypes.c_void_p)
+        v += '%s\n' % s
     return v
 
 import os, string, time
@@ -96,30 +105,41 @@ GP_PORT_SERIAL = 1
 GP_PORT_USB = 2
 
 
-
 class CameraAbilities(ctypes.Structure):
-    _fields_ = [('model', (ctypes.c_char * 128)), 
-                ('status', ctypes.c_int), 
-                ('port', ctypes.c_int), 
-                ('speed', (ctypes.c_int * 64)), 
-                ('operations', ctypes.c_int), 
-                ('file_operations', ctypes.c_int), 
-                ('folder_operations', ctypes.c_int), 
-                ('usb_vendor', ctypes.c_int), 
-                ('usb_product', ctypes.c_int), 
-                ('usb_class', ctypes.c_int), 
-                ('usb_subclass', ctypes.c_int), 
-                ('usb_protocol', ctypes.c_int), 
-                ('library', (ctypes.c_char * 1024)), 
-                ('id', (ctypes.c_char * 1024)), 
-                ('device_type', ctypes.c_int), 
-                ('reserved2', ctypes.c_int), 
-                ('reserved3', ctypes.c_int), 
-                ('reserved4', ctypes.c_int), 
-                ('reserved5', ctypes.c_int), 
-                ('reserved6', ctypes.c_int), 
-                ('reserved7', ctypes.c_int), 
+    _fields_ = [('model', (ctypes.c_char * 128)),
+                ('status', ctypes.c_int),
+                ('port', ctypes.c_int),
+                ('speed', (ctypes.c_int * 64)),
+                ('operations', ctypes.c_int),
+                ('file_operations', ctypes.c_int),
+                ('folder_operations', ctypes.c_int),
+                ('usb_vendor', ctypes.c_int),
+                ('usb_product', ctypes.c_int),
+                ('usb_class', ctypes.c_int),
+                ('usb_subclass', ctypes.c_int),
+                ('usb_protocol', ctypes.c_int),
+                ('library', (ctypes.c_char * 1024)),
+                ('id', (ctypes.c_char * 1024)),
+                ('device_type', ctypes.c_int),
+                ('reserved2', ctypes.c_int),
+                ('reserved3', ctypes.c_int),
+                ('reserved4', ctypes.c_int),
+                ('reserved5', ctypes.c_int),
+                ('reserved6', ctypes.c_int),
+                ('reserved7', ctypes.c_int),
                 ('reserved8', ctypes.c_int)]
+
+if library_version().split('\n')[0] == '2.4.99':
+    class PortInfo(ctypes.c_void_p):
+        pass
+else:
+    class PortInfo(ctypes.Structure):
+        _fields_ = [
+                ('type', ctypes.c_int), # enum is 32 bits on 32 and 64 bit Linux
+                ('name', (ctypes.c_char * 64)),
+                ('path', (ctypes.c_char * 64)),
+                ('library_filename', (ctypes.c_char * 1024))
+                ]
 
 # gphoto constants
 # Defined in 'gphoto2-port-result.h'
@@ -139,18 +159,18 @@ GP_WIDGET_TOGGLE = 4  # Toggle widget (think check box).
 GP_WIDGET_RADIO = 5   # Radio button widget.
 GP_WIDGET_MENU = 6    # Menu widget (same as RADIO).
 GP_WIDGET_BUTTON = 7  # Button press widget.
-GP_WIDGET_DATE = 8    # Date entering widget. 
+GP_WIDGET_DATE = 8    # Date entering widget.
 widget_types = ['Window', 'Section', 'Text', 'Range', 'Toggle', 'Radio', 'Menu', 'Button', 'Date']
 
 class CameraWidget(ctypes.Structure):
-    _fields_ = [('type', ctypes.c_int), 
-                ('label', (ctypes.c_char * 256)), 
-                ('info', (ctypes.c_char * 1024)), 
-                ('name', (ctypes.c_char * 256)), 
+    _fields_ = [('type', ctypes.c_int),
+                ('label', (ctypes.c_char * 256)),
+                ('info', (ctypes.c_char * 1024)),
+                ('name', (ctypes.c_char * 256)),
                 ('parent', (ctypes.c_void_p)),
                 ('value_string', ctypes.c_char_p),
                 ('value_int', ctypes.c_int),
-                ('value_float', ctypes.c_float), 
+                ('value_float', ctypes.c_float),
                 ('choice', (ctypes.c_void_p)),
                 ('choice_count', ctypes.c_int),
                 ('min', ctypes.c_float),
@@ -173,10 +193,11 @@ class libgphoto2error(Exception):
         return self.message + ' (' + str(self.result) + ')'
 
 def check(result):
-    if result!=0:
+    if result < 0:
         gp.gp_result_as_string.restype = ctypes.c_char_p
         message = gp.gp_result_as_string(result)
         raise libgphoto2error(result, message)
+    return result
 
 def check_unref(result, camfile):
     if result!=0:
@@ -184,32 +205,32 @@ def check_unref(result, camfile):
         gp.gp_result_as_string.restype = ctypes.c_char_p
         message = gp.gp_result_as_string(result)
         raise libgphoto2error(result, message)
-    
+
 class camera(object):
-    _cam = ctypes.c_void_p()
-    _leave_locked = False
     def __init__(self, autoInit = True):
+        self._cam = ctypes.c_void_p()
+        self._leave_locked = False
         check(gp.gp_camera_new(PTR(self._cam)))
         self.initialized = False
         if autoInit:
             self.init()
-        
+
     def init(self):
         if self.initialized:
             print "Camera is already initialized."
         ans = 0
         for i in range(1 + retries):
             ans = gp.gp_camera_init(self._cam, context)
-            if ans == 0: 
+            if ans == 0:
                 break
-            elif ans == -60: 
+            elif ans == -60:
                 print "***", unmount_cmd
                 os.system(unmount_cmd)
                 time.sleep(1)
                 print "camera.init() retry #%d..." % (i)
         check(ans)
         self.initialized = True
-        
+
     def reinit(self):
         gp.gp_camera_free(self._cam)
         self.__new__()
@@ -222,12 +243,12 @@ class camera(object):
 
     def leave_locked(self):
         self._leave_locked = True
-    
+
     def ref(self):
-        check(gp.gp_camera_ref(self._cam))        
+        check(gp.gp_camera_ref(self._cam))
 
     def unref(self):
-        check(gp.gp_camera_unref(self._cam))        
+        check(gp.gp_camera_unref(self._cam))
 
     def exit(self):
         check(gp.gp_camera_exit(self._cam, context))
@@ -254,10 +275,14 @@ class camera(object):
         ab = cameraAbilities()
         check(gp.gp_camera_get_abilities(self._cam, PTR(ab._ab)))
         return ab
-    def _set_abilities(self, ab): 
-        print "setting camera abilities (doesn't seem to work...)"
+    '''
+    def _set_abilities(self, abilities):
+        check(gp.gp_camera_set_abilities(self._cam, abilities))
+    '''
+    def _set_abilities(self, ab):
         check(gp.gp_camera_set_abilities(self._cam, ab._ab))
-        
+    abilities = property(_get_abilities, _set_abilities)
+
     def _get_config(self):
         window = cameraWidget(GP_WIDGET_WINDOW)
         check(gp.gp_camera_get_config(self._cam, PTR(window._w), context))
@@ -266,8 +291,6 @@ class camera(object):
     def _set_config(self, window):
         check(gp.gp_camera_set_config(self._cam, window._w, context))
     config = property(_get_config, _set_config)
-    
-    abilities = property(_get_abilities, _set_abilities)
 
     def capture_image(self, destpath = None):
         path = CameraFilePath()
@@ -287,14 +310,14 @@ class camera(object):
     def capture_preview(self, destpath = None):
         path = CameraFilePath()
         cfile = cameraFile()
-        
+
         ans = 0
         for i in range(1 + retries):
             ans = gp.gp_camera_capture_preview(self._cam, cfile._cf, context)
             if ans == 0: break
             else: print "capture_preview(%s) retry #%d..." % (destpath, i)
         check(ans)
-            
+
         if destpath:
             cfile.save(destpath)
         else:
@@ -304,13 +327,13 @@ class camera(object):
         cfile = cameraFile(self._cam, srcfolder, srcfilename)
         cfile.save(destpath)
         gp.gp_file_unref(cfile._cf)
-    
+
     def trigger_capture(self):
         check(gp.gp_camera_trigger_capture(self._cam, context))
-    
+
     def wait_for_event(self, timeout):
         raise NotImplementedError
-        
+
     def list_folders(self, path = "/"):
         l = cameraList()
         check(gp.gp_camera_folder_list_folders(self._cam, str(path), l._l, context));
@@ -320,7 +343,7 @@ class camera(object):
         l = cameraList()
         check(gp.gp_camera_folder_list_files(self._cam, str(path), l._l, context));
         return l.toList()
-        
+
     def _list_config(self, widget, cfglist, path):
         children = widget.children
         if children:
@@ -329,73 +352,40 @@ class camera(object):
         else:
             print path, "=", widget.value
             cfglist.append(path)
-        
+
     def list_config(self):
         cfglist = []
         cfg = self.config
         self._list_config(cfg, cfglist, cfg.name)
         return cfglist
 
-    @staticmethod
-    def _autodetect(l):
-        # Not everyone has gp_camera_autodetect(), so implemented here.
-
-        xlist = cameraList()
-
-        il = portInfoList()
-
-        al = cameraAbilitiesList()
-        al.detect(il, xlist)
-
-        for name, value in xlist.toList():
-            if value.startswith('usb:'):
-                l.append(name, value)
-
-        del al
-        del il
-        del xlist
-
-        return l.count()
-    
-    @staticmethod
-    def autodetect():
-        l = cameraList()
-        try:
-            # not everyone has gp_camera_autodetect
-            gp.gp_camera_autodetect
-        except AttributeError:
-            camera._autodetect(l)
-        else:
-            gp.gp_camera_autodetect(l._l, context)
-        return l.toList()
-        
     def ptp_canon_eos_requestdevicepropvalue(self, prop):
         params = ctypes.c_void_p(self._cam.value + 12)
         gp.ptp_generic_no_data(params, PTP_OC_CANON_EOS_RequestDevicePropValue, 1, prop)
-        pass
 
-    # TODO: port_info, port_speed, autodetect, init, config, 
+    def set_port_info(self, info):
+        check(gp.gp_camera_set_port_info(self._cam, info))
+
+    # TODO: port_info, port_speed, init, config
 
 class cameraFile:
-    _cf = ctypes.c_void_p()
-    
     def __init__(self, cam = None, srcfolder = None, srcfilename = None):
+        self._cf = ctypes.c_void_p()
         check(gp.gp_file_new(PTR(self._cf)))
         if cam:
-            check_unref(gp.gp_camera_file_get(cam, srcfolder, srcfilename, GP_FILE_TYPE_NORMAL, self._cf, context), self )
-            
+            check_unref(gp.gp_camera_file_get(cam, srcfolder, srcfilename, GP_FILE_TYPE_NORMAL, self._cf, context), self)
+
 
     def open(self, filename):
         check(gp.gp_file_open(PTR(self._cf), filename))
 
     def save(self, filename = None):
         if filename is None: filename = self.name
-        print "Saving", filename
         check(gp.gp_file_save(self._cf, filename))
 
     def ref(self):
         check(gp.gp_file_ref(self._cf))
-        
+
     def unref(self):
         check(gp.gp_file_unref(self._cf))
 
@@ -415,31 +405,39 @@ class cameraFile:
     def _set_name(self, name):
         check(gp.gp_file_set_name(self._cf, str(name)))
     name = property(_get_name, _set_name)
-    
+
     # TODO: new_from_fd (?), new_from_handler (?), mime_tipe, mtime, detect_mime_type, adjust_name_for_mime_type, data_and_size, append, slurp, python file object?
 
 class cameraAbilitiesList():
-    _l = ctypes.c_void_p()
-
+    _static_l = None
     def __init__(self):
-        check(gp.gp_abilities_list_new(PTR(self._l)))
-        check(gp.gp_abilities_list_load(self._l, context))
+        if cameraAbilitiesList._static_l is None:
+            cameraAbilitiesList._static_l = ctypes.c_void_p()
+            check(gp.gp_abilities_list_new(PTR(cameraAbilitiesList._static_l)))
+            check(gp.gp_abilities_list_load(cameraAbilitiesList._static_l, context))
+        self._l = cameraAbilitiesList._static_l
 
     def __del__(self):
-        check(gp.gp_abilities_list_free(self._l))
+        # don't delete because the static member can be used again
+        #check(gp.gp_abilities_list_free(self._l))
+        pass
 
     def detect(self, il, l):
         check(gp.gp_abilities_list_detect(self._l, il._l, l._l, context))
-    
-class cameraAbilities(object):
-    _ab = CameraAbilities()
 
+    def lookup_model(self, model):
+        return check(gp.gp_abilities_list_lookup_model(self._l, model))
+
+    def get_abilities(self, model_index, ab):
+        check(gp.gp_abilities_list_get_abilities(self._l, model_index, PTR(ab._ab)))
+
+class cameraAbilities(object):
     def __init__(self):
-        pass
+        self._ab = CameraAbilities()
 
     def __repr__(self):
         return "Model : %s\nStatus : %d\nPort : %d\nOperations : %d\nFile Operations : %d\nFolder Operations : %d\nUSB (vendor/product) : 0x%x/0x%x\nUSB class : 0x%x/0x%x/0x%x\nLibrary : %s\nId : %s\n" % (self._ab.model, self._ab.status, self._ab.port, self._ab.operations, self._ab.file_operations, self._ab.folder_operations, self._ab.usb_vendor, self._ab.usb_product, self._ab.usb_class, self._ab.usb_subclass, self._ab.usb_protocol, self._ab.library, self._ab.id)
-    
+
     model = property(lambda self: self._ab.model, None)
     status = property(lambda self: self._ab.status, None)
     port = property(lambda self: self._ab.port, None)
@@ -455,23 +453,92 @@ class cameraAbilities(object):
     id = property(lambda self: self._ab.id, None)
 
 class portInfoList():
-    _l = ctypes.c_void_p()
-
+    _static_l = None
     def __init__(self):
-        check(gp.gp_port_info_list_new(PTR(self._l)))
-        check(gp.gp_port_info_list_load(self._l))
+        if portInfoList._static_l is None:
+            portInfoList._static_l = ctypes.c_void_p()
+            check(gp.gp_port_info_list_new(PTR(portInfoList._static_l)))
+            check(gp.gp_port_info_list_load(portInfoList._static_l))
+        self._l = portInfoList._static_l
 
     def __del__(self):
-        check(gp.gp_port_info_list_free(self._l))
+        # don't free, since it is only created once
+        #check(gp.gp_port_info_list_free(self._l))
+        pass
 
     def count(self):
-        return gp.gp_port_info_list_count(self._l)
+        c = gp.gp_port_info_list_count(self._l)
+        check(c)
+        return c
+
+    def lookup_path(self, path):
+        index = gp.gp_port_info_list_lookup_path(self._l, path)
+        check(index)
+        return index
+
+    def get_info(self, path_index):
+        # there may be a problem here, but at least it works
+        #info = ctypes.c_void_p()
+        info = PortInfo()
+        check(gp.gp_port_info_list_get_info(self._l, path_index, PTR(info)))
+        return info
 
 class cameraList():
-    _l = ctypes.c_void_p()
-    def __init__(self):
+    def __init__(self, autodetect=False):
+        self._l = ctypes.c_void_p()
         check(gp.gp_list_new(PTR(self._l)))
-    
+
+        if autodetect == True:
+            print 'autodetecting'
+            #if False and hasattr(gp, 'gp_camera_autodetect'):
+            if hasattr(gp, 'gp_camera_autodetect'):
+                print 'using native gp_camera_autodetect'
+                gp.gp_camera_autodetect(self._l, context)
+            else:
+                print 'using Python gp_camera_autodetect'
+
+                '''
+                al = ctypes.c_void_p()
+                il = ctypes.c_void_p()
+                xlist = ctypes.c_void_p()
+
+                assert gp.gp_list_new(ctypes.byref(xlist)) >= GP_OK, 'gp_list_new failed'
+
+                assert gp.gp_port_info_list_new(ctypes.byref(il)) >= GP_OK, 'gp_port_info_list_new failed'
+                assert gp.gp_port_info_list_load(il) >= GP_OK, 'gp_port_info_list_load failed'
+                assert gp.gp_port_info_list_count(il) >= GP_OK, 'gp_port_info_list_count failed'
+
+                assert gp.gp_abilities_list_new(ctypes.byref(al)) >= GP_OK, 'gp_abilities_list_new failed'
+                assert gp.gp_abilities_list_load(al, context) >= GP_OK, 'gp_abilities_list_load failed'
+                assert gp.gp_abilities_list_detect(al, il, xlist, context) >= GP_OK, 'gp_abilities_list_detect failed'
+
+                for i in xrange(gp.gp_list_count(xlist)):
+                    name, value = ctypes.c_char_p(), ctypes.c_char_p()
+                    assert gp.gp_list_get_name(xlist, i, ctypes.byref(name)) >= GP_OK, 'gp_list_get_name failed'
+                    assert gp.gp_list_get_value(xlist, i, ctypes.byref(value)) >= GP_OK, 'gp_list_get_value failed'
+                    if value.value.startswith('usb:'):
+                        assert gp.gp_list_append(self._l, name.value, value.value) >= GP_OK, 'gp_list_append failed'
+
+                assert gp.gp_port_info_list_free(il) >= GP_OK, 'gp_port_info_list_free failed'
+                assert gp.gp_abilities_list_free(al) >= GP_OK, 'gp_abilities_list_free failed'
+                assert gp.gp_list_free(xlist) >= GP_OK, 'gp_list_free failed'
+
+                '''
+                xlist = cameraList()
+                il = portInfoList()
+                il.count()
+                al = cameraAbilitiesList()
+                al.detect(il, xlist)
+                for i in xrange(xlist.count()):
+                    name = xlist.get_name(i)
+                    value = xlist.get_value(i)
+                    print 'found', name, value
+                    if value.startswith('usb:0'):
+                        self.append(name, value)
+                del al
+                del il
+                del xlist
+
     def ref(self):
         check(gp.gp_list_ref(self._l))
 
@@ -479,27 +546,31 @@ class cameraList():
         check(gp.gp_list_ref(self._l))
 
     def __del__(self):
-        # this fails in gphoto 2.4.6
+        # this failed once in gphoto 2.4.6
         check(gp.gp_list_free(self._l))
+        pass
 
     def reset(self):
-        check(gp.gp_list_free(self._l))
-        check(gp.gp_list_new(PTR(self._l)))
+        #check(gp.gp_list_free(self._l))
+        #check(gp.gp_list_new(PTR(self._l)))
+        check(gp.gp_list_reset(self._l))
 
     def append(self, name, value):
         check(gp.gp_list_append(self._l, str(name), str(value)))
-    
+
     def sort(self):
         check(gp.gp_list_sort(self._l))
-    
+
     def count(self):
-        return gp.gp_list_count(self._l)
+        c = gp.gp_list_count(self._l)
+        check(c)
+        return c
 
     def find_by_name(self, name):
         index = ctypes.c_int()
         check(gp.gp_list_find_by_name(self._l, PTR(index), str(name)))
         return index.value
-    
+
     def get_name(self, index):
         name = ctypes.c_char_p()
         check(gp.gp_list_get_name(self._l, int(index), PTR(name)))
@@ -509,13 +580,13 @@ class cameraList():
         value = ctypes.c_char_p()
         check(gp.gp_list_get_value(self._l, int(index), PTR(value)))
         return value.value
-    
+
     def set_name(self, index, name):
         check(gp.gp_list_set_name(self._l, int(index), str(name)))
 
     def set_value(self, index, value):
         check(gp.gp_list_set_value(self._l, int(index), str(value)))
-    
+
     def __str__(self):
         header = "cameraList object with %d elements:\n" % self.count()
         contents = ["%d: (%s, %s)" % (i, self.get_name(i), self.get_value(i))
@@ -524,33 +595,29 @@ class cameraList():
         return header + string.join(contents, "\n")
 
     def toList(self):
-        list = []
+        return [(self.get_name(i), self.get_value(i)) for i in xrange(self.count())]
+        xlist = []
         for i in range(self.count()):
             n, v = self.get_name(i), self.get_value(i)
             if v is None:
-                list.append(n)
+                xlist.append(n)
             else:
-                list.append((n, v))
-        return list
-        
-    def toDict(self):
-        dic = {}
-        for i in range(self.count()):
-            dic[self.get_name(i)] = self.get_value(i)
-        return dic
-        
+                xlist.append((n, v))
+        return xlist
 
+    def toDict(self):
+        return dict(self.toList())
 
 class cameraWidget(object):
-    _w = ctypes.c_void_p()
-    
+
     def __init__(self, type = None, label = ""):
+        self._w = ctypes.c_void_p()
         if type is not None:
             check(gp.gp_widget_new(int(type), str(label), PTR(self._w)))
             check(gp.gp_widget_ref(self._w))
         else:
             self._w = ctypes.c_void_p()
-        
+
     def ref(self):
         check(gp.gp_widget_ref(self._w))
 
@@ -605,7 +672,7 @@ class cameraWidget(object):
     type = property(_get_type, None)
 
     def _get_typestr(self):
-        return widget_types[self.type]        
+        return widget_types[self.type]
     typestr = property(_get_typestr, None)
 
     def _get_label(self):
@@ -617,7 +684,7 @@ class cameraWidget(object):
     label = property(_get_label, _set_label)
 
     def _get_value(self):
-        value = ctypes.c_void_p()        
+        value = ctypes.c_void_p()
         ans = gp.gp_widget_get_value(self._w, PTR(value))
         if self.type in [GP_WIDGET_MENU, GP_WIDGET_RADIO, GP_WIDGET_TEXT]:
             value = ctypes.cast(value.value, ctypes.c_char_p)
@@ -631,25 +698,32 @@ class cameraWidget(object):
         check(ans)
         return value.value
     def _set_value(self, value):
-        value = ctypes.c_int(value)
-        check(gp.gp_widget_set_value(self._w, PTR(value)))
+        if self.type in (GP_WIDGET_MENU, GP_WIDGET_RADIO, GP_WIDGET_TEXT):
+            value = ctypes.c_char_p(value)
+        elif self.type == GP_WIDGET_RANGE:
+            value = ctypes.c_float_p(value) # this line not tested
+        elif self.type in (GP_WIDGET_TOGGLE, GP_WIDGET_DATE):
+            value = PTR(ctypes.c_int(value))
+        else:
+            return None # this line not tested
+        check(gp.gp_widget_set_value(self._w, value))
     value = property(_get_value, _set_value)
 
     def append(self, child):
         check(gp.gp_widget_append(self._w, child._w))
-    
+
     def prepend(self, child):
         check(gp.gp_widget_prepend(self._w, child._w))
 
     def count_children(self):
         return gp.gp_widget_count_children(self._w)
-        
+
     def get_child(self, child_number):
         w = cameraWidget()
         check(gp.gp_widget_get_child(self._w, int(child_number), PTR(w._w)))
         check(gp.gp_widget_ref(w._w))
         return w
-        
+
     def get_child_by_label(self, label):
         w = cameraWidget()
         check(gp.gp_widget_get_child_by_label(self._w, str(label), PTR(w._w)))
@@ -664,7 +738,7 @@ class cameraWidget(object):
         w = cameraWidget()
         check(gp.gp_widget_get_child_by_name(self._w, str(name), PTR(w._w)))
         return w
-        
+
     def _get_children(self):
         children = []
         for i in range(self.count_children()):
@@ -673,19 +747,19 @@ class cameraWidget(object):
             #print "child: ", self.get_child(i)
         return children
     children = property(_get_children, None)
-    
+
     def _get_parent(self):
         w = cameraWidget()
         check(gp.gp_widget_get_parent(self._w, PTR(w._w)))
         return w
     parent = property(_get_parent, None)
-        
+
     def _get_root(self):
         w = cameraWidget()
         check(gp.gp_widget_get_root(self._w, PTR(w._w)))
         return w
     root = property(_get_root, None)
-    
+
     def _set_range(self, range):
         """cameraWidget.range = (min, max, increment)"""
         float = ctypes.c_float
@@ -701,7 +775,7 @@ class cameraWidget(object):
 
     def add_choice(self, choice):
         check(gp.gp_widget_add_choice(self._w, str(choice)))
-    
+
     def count_choices(self, choice):
         return gp.gp_widget_count_choices(self._w)
 
@@ -709,7 +783,7 @@ class cameraWidget(object):
         choice = ctypes.c_char_p()
         check(gp.gp_widget_add_choice(self._w, int(choice_number), PTR(choice)))
         return choice.value
-    
+
     def createdoc(self):
         label = "Label: " + self.label
         info = "Info: " + (self.info if self.info != "" else "n/a")
@@ -734,10 +808,10 @@ class cameraWidget(object):
                 c._pop(simplechild)
             else:
                 setattr(simplewidget, c.name, c)
-                
+
             #print c.name, simplewidget.__doc__
         #print dir(simplewidget)
-    
+
     def populate_children(self):
         simplewidget = cameraWidgetSimple()
         setattr(self, self.name, simplewidget)
@@ -746,7 +820,6 @@ class cameraWidget(object):
 
     def __repr__(self):
         return "%s:%s:%s:%s:%s" % (self.label, self.name, self.info, self.typestr, self.value)
-
 
 class cameraWidgetSimple:
     pass
