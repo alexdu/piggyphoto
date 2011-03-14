@@ -14,21 +14,18 @@ retries = 1
 unmount_cmd = 'gvfs-mount -s gphoto2'
 
 #libgphoto2dll = 'libgphoto2.so.2.4.0'
-#libgphoto2dll = 'libgphoto2.so'
+libgphoto2dll = 'libgphoto2.so'
+# 2.4.6
 #libgphoto2dll = '/usr/lib/libgphoto2.so'
 # 2.4.8
-libgphoto2dll = '/usr/local/lib/libgphoto2.so.2'
+#libgphoto2dll = '/usr/local/lib/libgphoto2.so.2'
 # SVN
-libgphoto2dll = '/usr/local/lib/libgphoto2.so.6'
+#libgphoto2dll = '/usr/local/lib/libgphoto2.so.6'
 
+import re
 import ctypes
-import ctypes.util
 gp = ctypes.CDLL(libgphoto2dll)
 context = gp.gp_context_new()
-
-c = ctypes.CDLL(ctypes.util.find_library('c'))
-c.malloc.argtypes = [ctypes.c_long]
-c.malloc.restype = ctypes.c_void_p
 
 def library_version(verbose = True):
     gp.gp_library_version.restype = ctypes.POINTER(ctypes.c_char_p)
@@ -129,6 +126,8 @@ class CameraAbilities(ctypes.Structure):
                 ('reserved7', ctypes.c_int),
                 ('reserved8', ctypes.c_int)]
 
+# the GPPortInfo data structure is a pointer in SVN
+# in stable versions, it is a struct
 if library_version().split('\n')[0] == '2.4.99':
     class PortInfo(ctypes.c_void_p):
         pass
@@ -275,10 +274,6 @@ class camera(object):
         ab = cameraAbilities()
         check(gp.gp_camera_get_abilities(self._cam, PTR(ab._ab)))
         return ab
-    '''
-    def _set_abilities(self, abilities):
-        check(gp.gp_camera_set_abilities(self._cam, abilities))
-    '''
     def _set_abilities(self, ab):
         check(gp.gp_camera_set_abilities(self._cam, ab._ab))
     abilities = property(_get_abilities, _set_abilities)
@@ -291,6 +286,12 @@ class camera(object):
     def _set_config(self, window):
         check(gp.gp_camera_set_config(self._cam, window._w, context))
     config = property(_get_config, _set_config)
+
+    def _get_port_info(self):
+        raise NotImplementedError
+    def _set_port_info(self, info):
+        check(gp.gp_camera_set_port_info(self._cam, info))
+    port_info = property(_get_port_info, _set_port_info)
 
     def capture_image(self, destpath = None):
         path = CameraFilePath()
@@ -363,12 +364,9 @@ class camera(object):
         params = ctypes.c_void_p(self._cam.value + 12)
         gp.ptp_generic_no_data(params, PTP_OC_CANON_EOS_RequestDevicePropValue, 1, prop)
 
-    def set_port_info(self, info):
-        check(gp.gp_camera_set_port_info(self._cam, info))
+    # TODO: port_speed, init, config
 
-    # TODO: port_info, port_speed, init, config
-
-class cameraFile:
+class cameraFile(object):
     def __init__(self, cam = None, srcfolder = None, srcfilename = None):
         self._cf = ctypes.c_void_p()
         check(gp.gp_file_new(PTR(self._cf)))
@@ -408,7 +406,7 @@ class cameraFile:
 
     # TODO: new_from_fd (?), new_from_handler (?), mime_tipe, mtime, detect_mime_type, adjust_name_for_mime_type, data_and_size, append, slurp, python file object?
 
-class cameraAbilitiesList():
+class cameraAbilitiesList(object):
     _static_l = None
     def __init__(self):
         if cameraAbilitiesList._static_l is None:
@@ -418,7 +416,7 @@ class cameraAbilitiesList():
         self._l = cameraAbilitiesList._static_l
 
     def __del__(self):
-        # don't delete because the static member can be used again
+        # don't free, since it is only created once
         #check(gp.gp_abilities_list_free(self._l))
         pass
 
@@ -452,7 +450,7 @@ class cameraAbilities(object):
     library = property(lambda self: self._ab.library, None)
     id = property(lambda self: self._ab.id, None)
 
-class portInfoList():
+class portInfoList(object):
     _static_l = None
     def __init__(self):
         if portInfoList._static_l is None:
@@ -477,64 +475,30 @@ class portInfoList():
         return index
 
     def get_info(self, path_index):
-        # there may be a problem here, but at least it works
-        #info = ctypes.c_void_p()
         info = PortInfo()
         check(gp.gp_port_info_list_get_info(self._l, path_index, PTR(info)))
         return info
 
-class cameraList():
+class cameraList(object):
     def __init__(self, autodetect=False):
         self._l = ctypes.c_void_p()
         check(gp.gp_list_new(PTR(self._l)))
 
         if autodetect == True:
-            print 'autodetecting'
-            #if False and hasattr(gp, 'gp_camera_autodetect'):
             if hasattr(gp, 'gp_camera_autodetect'):
-                print 'using native gp_camera_autodetect'
                 gp.gp_camera_autodetect(self._l, context)
             else:
-                print 'using Python gp_camera_autodetect'
-
-                '''
-                al = ctypes.c_void_p()
-                il = ctypes.c_void_p()
-                xlist = ctypes.c_void_p()
-
-                assert gp.gp_list_new(ctypes.byref(xlist)) >= GP_OK, 'gp_list_new failed'
-
-                assert gp.gp_port_info_list_new(ctypes.byref(il)) >= GP_OK, 'gp_port_info_list_new failed'
-                assert gp.gp_port_info_list_load(il) >= GP_OK, 'gp_port_info_list_load failed'
-                assert gp.gp_port_info_list_count(il) >= GP_OK, 'gp_port_info_list_count failed'
-
-                assert gp.gp_abilities_list_new(ctypes.byref(al)) >= GP_OK, 'gp_abilities_list_new failed'
-                assert gp.gp_abilities_list_load(al, context) >= GP_OK, 'gp_abilities_list_load failed'
-                assert gp.gp_abilities_list_detect(al, il, xlist, context) >= GP_OK, 'gp_abilities_list_detect failed'
-
-                for i in xrange(gp.gp_list_count(xlist)):
-                    name, value = ctypes.c_char_p(), ctypes.c_char_p()
-                    assert gp.gp_list_get_name(xlist, i, ctypes.byref(name)) >= GP_OK, 'gp_list_get_name failed'
-                    assert gp.gp_list_get_value(xlist, i, ctypes.byref(value)) >= GP_OK, 'gp_list_get_value failed'
-                    if value.value.startswith('usb:'):
-                        assert gp.gp_list_append(self._l, name.value, value.value) >= GP_OK, 'gp_list_append failed'
-
-                assert gp.gp_port_info_list_free(il) >= GP_OK, 'gp_port_info_list_free failed'
-                assert gp.gp_abilities_list_free(al) >= GP_OK, 'gp_abilities_list_free failed'
-                assert gp.gp_list_free(xlist) >= GP_OK, 'gp_list_free failed'
-
-                '''
+                # this is for stable versions of gphoto <= 2.10.1
                 xlist = cameraList()
                 il = portInfoList()
                 il.count()
                 al = cameraAbilitiesList()
                 al.detect(il, xlist)
                 for i in xrange(xlist.count()):
-                    name = xlist.get_name(i)
-                    value = xlist.get_value(i)
-                    print 'found', name, value
-                    if value.startswith('usb:0'):
-                        self.append(name, value)
+                    model = xlist.get_name(i)
+                    path = xlist.get_value(i)
+                    if re.match(r'usb:\d{3},\d{3}', path):
+                        self.append(model, path)
                 del al
                 del il
                 del xlist
@@ -562,9 +526,7 @@ class cameraList():
         check(gp.gp_list_sort(self._l))
 
     def count(self):
-        c = gp.gp_list_count(self._l)
-        check(c)
-        return c
+        return check(gp.gp_list_count(self._l))
 
     def find_by_name(self, name):
         index = ctypes.c_int()
@@ -625,6 +587,7 @@ class cameraWidget(object):
         check(gp.gp_widget_unref(self._w))
 
     def __del__(self):
+        # TODO fix this or find a good reason not to
         #print "widget(%s) __del__" % self.name
         #check(gp.gp_widget_unref(self._w))
         pass
@@ -736,15 +699,14 @@ class cameraWidget(object):
 
     def get_child_by_name(self, name):
         w = cameraWidget()
+        # this fails in 2.4.6 (Ubuntu 9.10)
         check(gp.gp_widget_get_child_by_name(self._w, str(name), PTR(w._w)))
         return w
 
     def _get_children(self):
         children = []
         for i in range(self.count_children()):
-            #print "getting child", i
             children.append(self.get_child(i))
-            #print "child: ", self.get_child(i)
         return children
     children = property(_get_children, None)
 
@@ -821,5 +783,5 @@ class cameraWidget(object):
     def __repr__(self):
         return "%s:%s:%s:%s:%s" % (self.label, self.name, self.info, self.typestr, self.value)
 
-class cameraWidgetSimple:
+class cameraWidgetSimple(object):
     pass
