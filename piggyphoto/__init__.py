@@ -399,8 +399,7 @@ class cameraFile(object):
         size = ctypes.c_ulong()
         gp.gp_file_get_data_and_size(self._cf, ctypes.byref(data),
                                      ctypes.byref(size))
-        size = int(str(size).split("(")[1].rstrip("L)"))
-        return ctypes.string_at(data, size)
+        return ctypes.string_at(data, size.value)
 
     def __dealoc__(self, filename):
         check(gp.gp_file_free(self._cf))
