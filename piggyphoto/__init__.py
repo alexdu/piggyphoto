@@ -393,6 +393,14 @@ class cameraFile(object):
     def copy(self, source):
         check(gp.gp_file_copy(self._cf, source._cf))
 
+    def to_pixbuf(self):
+        """Returns data for GdkPixbuf.PixbufLoader.write()."""
+        data = ctypes.c_char_p()
+        size = ctypes.c_ulong()
+        gp.gp_file_get_data_and_size(self._cf, ctypes.byref(data),
+                                     ctypes.byref(size))
+        return ctypes.string_at(data, size.value)
+
     def __dealoc__(self, filename):
         check(gp.gp_file_free(self._cf))
 
