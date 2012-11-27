@@ -652,7 +652,8 @@ class cameraWidget(object):
         if self.type in [GP_WIDGET_MENU, GP_WIDGET_RADIO, GP_WIDGET_TEXT]:
             value = ctypes.cast(value.value, ctypes.c_char_p)
         elif self.type == GP_WIDGET_RANGE:
-            value = ctypes.cast(value.value, ctypes.c_float_p)
+            #value = ctypes.cast(value.value, ctypes.c_float_p)
+            pass
         elif self.type in [GP_WIDGET_TOGGLE, GP_WIDGET_DATE]:
             #value = ctypes.cast(value.value, ctypes.c_int_p)
             pass
@@ -664,7 +665,8 @@ class cameraWidget(object):
         if self.type in (GP_WIDGET_MENU, GP_WIDGET_RADIO, GP_WIDGET_TEXT):
             value = ctypes.c_char_p(value)
         elif self.type == GP_WIDGET_RANGE:
-            value = ctypes.c_float_p(value) # this line not tested
+            #value = ctypes.c_float_p(value) # this line not tested
+            pass
         elif self.type in (GP_WIDGET_TOGGLE, GP_WIDGET_DATE):
             value = PTR(ctypes.c_int(value))
         else:
