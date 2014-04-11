@@ -5,26 +5,28 @@
 # - libgphoto2 Python bindings by David PHAM-VAN <david@ab2r.com>
 # - ctypes_gphoto2.py by Hans Ulrich Niedermann <gp@n-dimensional.de>
 
+import platform
+
 # Some functions return errors which can be fixed by retrying.
 # For example, capture_preview on Canon 550D fails the first time, but subsequent calls are OK.
 # Retries are performed on: camera.capture_preview, camera.capture_image and camera.init()
 retries = 1
 
 # This is run if gp_camera_init returns -60 (Could not lock the device) and retries >= 1.
-unmount_cmd = 'gvfs-mount -s gphoto2'
-
-#libgphoto2dll = 'libgphoto2.so.2.4.0'
-libgphoto2dll = 'libgphoto2.so'
-# 2.4.6
-#libgphoto2dll = '/usr/lib/libgphoto2.so'
-# 2.4.8
-#libgphoto2dll = '/usr/local/lib/libgphoto2.so.2'
-# SVN
-#libgphoto2dll = '/usr/local/lib/libgphoto2.so.6'
+if platform.system() == 'Darwin':
+    unmount_cmd = 'killall PTPCamera'
+    libgphoto2dll = 'libgphoto2.dylib'
+elif platform.system() == 'Windows':
+    libgphoto2dll = 'libgphoto2.dll'
+    unmount_cmd = None
+else:
+    libgphoto2dll = 'libgphoto2.so'
+    unmount_cmd = 'gvfs-mount -s gphoto2'
 
 import re
 import ctypes
 gp = ctypes.CDLL(libgphoto2dll)
+gp.gp_context_new.restype = ctypes.c_void_p
 context = gp.gp_context_new()
 
 def library_version(verbose = True):
@@ -219,10 +221,11 @@ class camera(object):
             print "Camera is already initialized."
         ans = 0
         for i in range(1 + retries):
+            gp.gp_camera_init.argtypes = [ctypes.c_void_p]*2
             ans = gp.gp_camera_init(self._cam, context)
             if ans == 0:
                 break
-            elif ans == -60:
+            elif (ans == -60 or ans == -53) and (unmount_cmd != None):
                 print "***", unmount_cmd
                 os.system(unmount_cmd)
                 time.sleep(1)
@@ -280,6 +283,7 @@ class camera(object):
 
     def _get_config(self):
         window = cameraWidget(GP_WIDGET_WINDOW)
+        gp.gp_camera_get_config.argtypes = [ctypes.c_void_p]*3
         check(gp.gp_camera_get_config(self._cam, PTR(window._w), context))
         window.populate_children()
         return window
@@ -298,6 +302,7 @@ class camera(object):
 
         ans = 0
         for i in range(1 + retries):
+            gp.gp_camera_capture.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p]
             ans = gp.gp_camera_capture(self._cam, GP_CAPTURE_IMAGE, PTR(path), context)
             if ans == 0: break
             else: print "capture_image(%s) retry #%d..." % (destpath, i)
@@ -314,6 +319,7 @@ class camera(object):
 
         ans = 0
         for i in range(1 + retries):
+            gp.gp_camera_capture_preview.argtypes = [ctypes.c_void_p]*3
             ans = gp.gp_camera_capture_preview(self._cam, cfile._cf, context)
             if ans == 0: break
             else: print "capture_preview(%s) retry #%d..." % (destpath, i)
@@ -337,11 +343,13 @@ class camera(object):
 
     def list_folders(self, path = "/"):
         l = cameraList()
+        gp.gp_camera_folder_list_folders.argtypes = [ctypes.c_void_p]*4
         check(gp.gp_camera_folder_list_folders(self._cam, str(path), l._l, context));
         return l.toList()
 
     def list_files(self, path = "/"):
         l = cameraList()
+        gp.gp_camera_folder_list_files.argtypes = [ctypes.c_void_p]*4
         check(gp.gp_camera_folder_list_files(self._cam, str(path), l._l, context));
         return l.toList()
 
@@ -371,6 +379,7 @@ class cameraFile(object):
         self._cf = ctypes.c_void_p()
         check(gp.gp_file_new(PTR(self._cf)))
         if cam:
+            gp.gp_camera_file_get.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p]
             check_unref(gp.gp_camera_file_get(cam, srcfolder, srcfilename, GP_FILE_TYPE_NORMAL, self._cf, context), self)
 
 
@@ -486,6 +495,7 @@ class cameraList(object):
 
         if autodetect == True:
             if hasattr(gp, 'gp_camera_autodetect'):
+                gp.gp_camera_autodetect.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
                 gp.gp_camera_autodetect(self._l, context)
             else:
                 # this is for stable versions of gphoto <= 2.4.10.1
