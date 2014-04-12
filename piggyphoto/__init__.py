@@ -137,9 +137,9 @@ else:
     class PortInfo(ctypes.Structure):
         _fields_ = [
                 ('type', ctypes.c_int), # enum is 32 bits on 32 and 64 bit Linux
-                ('name', (ctypes.c_char * 64)),
-                ('path', (ctypes.c_char * 64)),
-                ('library_filename', (ctypes.c_char * 1024))
+                ('name', ctypes.c_char_p),
+                ('path', ctypes.c_char_p),
+                ('library_filename', ctypes.c_char_p)
                 ]
 
 # gphoto constants
@@ -294,7 +294,8 @@ class camera(object):
     def _get_port_info(self):
         raise NotImplementedError
     def _set_port_info(self, info):
-        check(gp.gp_camera_set_port_info(self._cam, info))
+        gp.gp_camera_set_port_info.argtypes = [ctypes.c_void_p]*2
+        check(gp.gp_camera_set_port_info(self._cam, PTR(info)))
     port_info = property(_get_port_info, _set_port_info)
 
     def capture_image(self, destpath = None):
@@ -484,9 +485,10 @@ class portInfoList(object):
         return index
 
     def get_info(self, path_index):
-        info = PortInfo()
-        check(gp.gp_port_info_list_get_info(self._l, path_index, PTR(info)))
-        return info
+        infop = ctypes.POINTER(PortInfo)()
+        gp.gp_port_info_list_get_info.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.POINTER(PortInfo))]
+        check(gp.gp_port_info_list_get_info(self._l, path_index, ctypes.byref(infop)))
+        return infop.contents
 
 class cameraList(object):
     def __init__(self, autodetect=False):
