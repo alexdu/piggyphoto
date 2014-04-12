@@ -219,23 +219,28 @@ class camera(object):
     def init(self):
         if self.initialized:
             print "Camera is already initialized."
-        ans = 0
-        for i in range(1 + retries):
-            gp.gp_camera_init.argtypes = [ctypes.c_void_p]*2
-            ans = gp.gp_camera_init(self._cam, context)
-            if ans == 0:
-                break
-            elif (ans == -60 or ans == -53) and (unmount_cmd != None):
-                print "***", unmount_cmd
-                os.system(unmount_cmd)
-                time.sleep(1)
-                print "camera.init() retry #%d..." % (i)
-        check(ans)
-        self.initialized = True
+        else:
+            ans = 0
+            for i in range(1 + retries):
+                gp.gp_camera_init.argtypes = [ctypes.c_void_p]*2
+                ans = gp.gp_camera_init(self._cam, context)
+                if ans == 0:
+                    break
+                elif (ans == -60 or ans == -53) and (unmount_cmd != None):
+                    print "***", unmount_cmd
+                    os.system(unmount_cmd)
+                    time.sleep(1)
+                    print "camera.init() retry #%d..." % (i)
+            check(ans)
+            self.initialized = True
 
     def reinit(self):
+        pi = self.port_info
+        pi_copy = PortInfo()
+        ctypes.memmove(PTR(pi_copy), PTR(pi), ctypes.sizeof(PortInfo))
         gp.gp_camera_free(self._cam)
-        self.__new__()
+        self.__init__(autoInit=False)
+        self.port_info = pi_copy
         self.init()
 
     def __del__(self):
