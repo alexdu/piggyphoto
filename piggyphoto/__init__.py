@@ -795,3 +795,5 @@ class cameraWidget(object):
 
 class cameraWidgetSimple(object):
     pass
+
+__version__ = "0.1dev"

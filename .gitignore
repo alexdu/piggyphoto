@@ -8,3 +8,5 @@ build/
 *.prof
 *.html
 *.jpg
+dist
+*.egg-info
