@@ -292,7 +292,10 @@ class camera(object):
     config = property(_get_config, _set_config)
 
     def _get_port_info(self):
-        raise NotImplementedError
+        infop = ctypes.POINTER(PortInfo)()
+        gp.gp_camera_get_port_info.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.POINTER(PortInfo))]
+        check(gp.gp_camera_get_port_info(self._cam, ctypes.byref(infop)))
+        return infop.contents
     def _set_port_info(self, info):
         gp.gp_camera_set_port_info.argtypes = [ctypes.c_void_p]*2
         check(gp.gp_camera_set_port_info(self._cam, PTR(info)))
