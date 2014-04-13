@@ -293,6 +293,7 @@ class camera(object):
         window.populate_children()
         return window
     def _set_config(self, window):
+        gp.gp_camera_set_config.argtypes = [ctypes.c_void_p]*3
         check(gp.gp_camera_set_config(self._cam, window._w, context))
     config = property(_get_config, _set_config)
 
@@ -689,6 +690,7 @@ class cameraWidget(object):
             value = PTR(ctypes.c_int(value))
         else:
             return None # this line not tested
+        gp.gp_widget_set_value.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
         check(gp.gp_widget_set_value(self._w, value))
     value = property(_get_value, _set_value)
 
@@ -723,6 +725,9 @@ class cameraWidget(object):
         check(gp.gp_widget_get_child_by_name(self._w, str(name), PTR(w._w)))
         return w
 
+    def __getitem__(self, key):
+        return next((x for x in ([self] + self.children) if key in [x.name, x.label]), None)
+    
     def _get_children(self):
         children = []
         for i in range(self.count_children()):
@@ -758,12 +763,12 @@ class cameraWidget(object):
     def add_choice(self, choice):
         check(gp.gp_widget_add_choice(self._w, str(choice)))
 
-    def count_choices(self, choice):
+    def count_choices(self):
         return gp.gp_widget_count_choices(self._w)
 
     def get_choice(self, choice_number):
         choice = ctypes.c_char_p()
-        check(gp.gp_widget_add_choice(self._w, int(choice_number), PTR(choice)))
+        check(gp.gp_widget_get_choice(self._w, int(choice_number), PTR(choice)))
         return choice.value
 
     def createdoc(self):
