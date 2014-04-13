@@ -5,26 +5,28 @@
 # - libgphoto2 Python bindings by David PHAM-VAN <david@ab2r.com>
 # - ctypes_gphoto2.py by Hans Ulrich Niedermann <gp@n-dimensional.de>
 
+import platform
+
 # Some functions return errors which can be fixed by retrying.
 # For example, capture_preview on Canon 550D fails the first time, but subsequent calls are OK.
 # Retries are performed on: camera.capture_preview, camera.capture_image and camera.init()
 retries = 1
 
 # This is run if gp_camera_init returns -60 (Could not lock the device) and retries >= 1.
-unmount_cmd = 'gvfs-mount -s gphoto2'
-
-#libgphoto2dll = 'libgphoto2.so.2.4.0'
-libgphoto2dll = 'libgphoto2.so'
-# 2.4.6
-#libgphoto2dll = '/usr/lib/libgphoto2.so'
-# 2.4.8
-#libgphoto2dll = '/usr/local/lib/libgphoto2.so.2'
-# SVN
-#libgphoto2dll = '/usr/local/lib/libgphoto2.so.6'
+if platform.system() == 'Darwin':
+    unmount_cmd = 'killall PTPCamera'
+    libgphoto2dll = 'libgphoto2.dylib'
+elif platform.system() == 'Windows':
+    libgphoto2dll = 'libgphoto2.dll'
+    unmount_cmd = None
+else:
+    libgphoto2dll = 'libgphoto2.so'
+    unmount_cmd = 'gvfs-mount -s gphoto2'
 
 import re
 import ctypes
 gp = ctypes.CDLL(libgphoto2dll)
+gp.gp_context_new.restype = ctypes.c_void_p
 context = gp.gp_context_new()
 
 def library_version(verbose = True):
@@ -135,9 +137,9 @@ else:
     class PortInfo(ctypes.Structure):
         _fields_ = [
                 ('type', ctypes.c_int), # enum is 32 bits on 32 and 64 bit Linux
-                ('name', (ctypes.c_char * 64)),
-                ('path', (ctypes.c_char * 64)),
-                ('library_filename', (ctypes.c_char * 1024))
+                ('name', ctypes.c_char_p),
+                ('path', ctypes.c_char_p),
+                ('library_filename', ctypes.c_char_p)
                 ]
 
 # gphoto constants
@@ -217,22 +219,28 @@ class camera(object):
     def init(self):
         if self.initialized:
             print "Camera is already initialized."
-        ans = 0
-        for i in range(1 + retries):
-            ans = gp.gp_camera_init(self._cam, context)
-            if ans == 0:
-                break
-            elif ans == -60:
-                print "***", unmount_cmd
-                os.system(unmount_cmd)
-                time.sleep(1)
-                print "camera.init() retry #%d..." % (i)
-        check(ans)
-        self.initialized = True
+        else:
+            ans = 0
+            for i in range(1 + retries):
+                gp.gp_camera_init.argtypes = [ctypes.c_void_p]*2
+                ans = gp.gp_camera_init(self._cam, context)
+                if ans == 0:
+                    break
+                elif (ans == -60 or ans == -53) and (unmount_cmd != None):
+                    print "***", unmount_cmd
+                    os.system(unmount_cmd)
+                    time.sleep(1)
+                    print "camera.init() retry #%d..." % (i)
+            check(ans)
+            self.initialized = True
 
     def reinit(self):
+        pi = self.port_info
+        pi_copy = PortInfo()
+        ctypes.memmove(PTR(pi_copy), PTR(pi), ctypes.sizeof(PortInfo))
         gp.gp_camera_free(self._cam)
-        self.__new__()
+        self.__init__(autoInit=False)
+        self.port_info = pi_copy
         self.init()
 
     def __del__(self):
@@ -280,17 +288,23 @@ class camera(object):
 
     def _get_config(self):
         window = cameraWidget(GP_WIDGET_WINDOW)
+        gp.gp_camera_get_config.argtypes = [ctypes.c_void_p]*3
         check(gp.gp_camera_get_config(self._cam, PTR(window._w), context))
         window.populate_children()
         return window
     def _set_config(self, window):
+        gp.gp_camera_set_config.argtypes = [ctypes.c_void_p]*3
         check(gp.gp_camera_set_config(self._cam, window._w, context))
     config = property(_get_config, _set_config)
 
     def _get_port_info(self):
-        raise NotImplementedError
+        infop = ctypes.POINTER(PortInfo)()
+        gp.gp_camera_get_port_info.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.POINTER(PortInfo))]
+        check(gp.gp_camera_get_port_info(self._cam, ctypes.byref(infop)))
+        return infop.contents
     def _set_port_info(self, info):
-        check(gp.gp_camera_set_port_info(self._cam, info))
+        gp.gp_camera_set_port_info.argtypes = [ctypes.c_void_p]*2
+        check(gp.gp_camera_set_port_info(self._cam, PTR(info)))
     port_info = property(_get_port_info, _set_port_info)
 
     def capture_image(self, destpath = None):
@@ -298,6 +312,7 @@ class camera(object):
 
         ans = 0
         for i in range(1 + retries):
+            gp.gp_camera_capture.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p]
             ans = gp.gp_camera_capture(self._cam, GP_CAPTURE_IMAGE, PTR(path), context)
             if ans == 0: break
             else: print "capture_image(%s) retry #%d..." % (destpath, i)
@@ -314,6 +329,7 @@ class camera(object):
 
         ans = 0
         for i in range(1 + retries):
+            gp.gp_camera_capture_preview.argtypes = [ctypes.c_void_p]*3
             ans = gp.gp_camera_capture_preview(self._cam, cfile._cf, context)
             if ans == 0: break
             else: print "capture_preview(%s) retry #%d..." % (destpath, i)
@@ -337,11 +353,13 @@ class camera(object):
 
     def list_folders(self, path = "/"):
         l = cameraList()
+        gp.gp_camera_folder_list_folders.argtypes = [ctypes.c_void_p]*4
         check(gp.gp_camera_folder_list_folders(self._cam, str(path), l._l, context));
         return l.toList()
 
     def list_files(self, path = "/"):
         l = cameraList()
+        gp.gp_camera_folder_list_files.argtypes = [ctypes.c_void_p]*4
         check(gp.gp_camera_folder_list_files(self._cam, str(path), l._l, context));
         return l.toList()
 
@@ -371,6 +389,7 @@ class cameraFile(object):
         self._cf = ctypes.c_void_p()
         check(gp.gp_file_new(PTR(self._cf)))
         if cam:
+            gp.gp_camera_file_get.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p]
             check_unref(gp.gp_camera_file_get(cam, srcfolder, srcfilename, GP_FILE_TYPE_NORMAL, self._cf, context), self)
 
 
@@ -475,9 +494,10 @@ class portInfoList(object):
         return index
 
     def get_info(self, path_index):
-        info = PortInfo()
-        check(gp.gp_port_info_list_get_info(self._l, path_index, PTR(info)))
-        return info
+        infop = ctypes.POINTER(PortInfo)()
+        gp.gp_port_info_list_get_info.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.POINTER(PortInfo))]
+        check(gp.gp_port_info_list_get_info(self._l, path_index, ctypes.byref(infop)))
+        return infop.contents
 
 class cameraList(object):
     def __init__(self, autodetect=False):
@@ -486,6 +506,7 @@ class cameraList(object):
 
         if autodetect == True:
             if hasattr(gp, 'gp_camera_autodetect'):
+                gp.gp_camera_autodetect.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
                 gp.gp_camera_autodetect(self._l, context)
             else:
                 # this is for stable versions of gphoto <= 2.4.10.1
@@ -669,6 +690,7 @@ class cameraWidget(object):
             value = PTR(ctypes.c_int(value))
         else:
             return None # this line not tested
+        gp.gp_widget_set_value.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
         check(gp.gp_widget_set_value(self._w, value))
     value = property(_get_value, _set_value)
 
@@ -703,6 +725,9 @@ class cameraWidget(object):
         check(gp.gp_widget_get_child_by_name(self._w, str(name), PTR(w._w)))
         return w
 
+    def __getitem__(self, key):
+        return next((x for x in ([self] + self.children) if key in [x.name, x.label]), None)
+    
     def _get_children(self):
         children = []
         for i in range(self.count_children()):
@@ -738,12 +763,12 @@ class cameraWidget(object):
     def add_choice(self, choice):
         check(gp.gp_widget_add_choice(self._w, str(choice)))
 
-    def count_choices(self, choice):
+    def count_choices(self):
         return gp.gp_widget_count_choices(self._w)
 
     def get_choice(self, choice_number):
         choice = ctypes.c_char_p()
-        check(gp.gp_widget_add_choice(self._w, int(choice_number), PTR(choice)))
+        check(gp.gp_widget_get_choice(self._w, int(choice_number), PTR(choice)))
         return choice.value
 
     def createdoc(self):
@@ -785,3 +810,5 @@ class cameraWidget(object):
 
 class cameraWidgetSimple(object):
     pass
+
+__version__ = "0.1dev"
