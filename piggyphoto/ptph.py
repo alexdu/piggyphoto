@@ -10,7 +10,7 @@ for line in lines:
     reg = r"^#define\s+([a-zA-Z0-9_]+)\s+(.*)"
     m = re.match(reg, line)
     if m:
-        #print line
+        #print(line)
         g = m.groups()
         name, value = g[0], g[1]
         value = value.replace("/*", "#")
