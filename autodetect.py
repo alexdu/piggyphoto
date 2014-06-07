@@ -1,4 +1,4 @@
-import piggyphoto as pp
+from piggyphoto import piggyphoto as pp
 
 print("libgphoto2 version:")
 print(pp.library_version())

@@ -1,4 +1,4 @@
-import piggyphoto
+from piggyphoto import piggyphoto
 
 C = piggyphoto.camera()
 

@@ -1,4 +1,4 @@
-import piggyphoto
+from piggyphoto import piggyphoto
 from pprint import pprint
 C = piggyphoto.camera()
 

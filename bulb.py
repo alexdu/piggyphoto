@@ -1,5 +1,5 @@
 from pprint import pprint
-import piggyphoto as pp
+from piggyphoto import piggyphoto as pp
 import os
 import time
 
