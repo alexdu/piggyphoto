@@ -1,4 +1,5 @@
-import piggyphoto, pygame
+from piggyphoto import piggyphoto
+import pygame
 import os
 import time
 

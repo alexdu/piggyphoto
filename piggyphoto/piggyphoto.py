@@ -42,7 +42,7 @@ def library_version(verbose = True):
     return v
 
 import os, string, time
-from ptp import *
+from .ptp import *
 
 PTR = ctypes.pointer
 
@@ -216,17 +216,17 @@ class camera(object):
 
     def init(self):
         if self.initialized:
-            print "Camera is already initialized."
+            print("Camera is already initialized.")
         ans = 0
         for i in range(1 + retries):
             ans = gp.gp_camera_init(self._cam, context)
             if ans == 0:
                 break
             elif ans == -60:
-                print "***", unmount_cmd
+                print("***", unmount_cmd)
                 os.system(unmount_cmd)
                 time.sleep(1)
-                print "camera.init() retry #%d..." % (i)
+                print("camera.init() retry #%d..." % (i))
         check(ans)
         self.initialized = True
 
@@ -300,7 +300,7 @@ class camera(object):
         for i in range(1 + retries):
             ans = gp.gp_camera_capture(self._cam, GP_CAPTURE_IMAGE, PTR(path), context)
             if ans == 0: break
-            else: print "capture_image(%s) retry #%d..." % (destpath, i)
+            else: print("capture_image(%s) retry #%d..." % (destpath, i))
         check(ans)
 
         if destpath:
@@ -316,17 +316,17 @@ class camera(object):
         for i in range(1 + retries):
             ans = gp.gp_camera_capture_preview(self._cam, cfile._cf, context)
             if ans == 0: break
-            else: print "capture_preview(%s) retry #%d..." % (destpath, i)
+            else: print("capture_preview(%s) retry #%d..." % (destpath, i))
         check(ans)
 
         if destpath:
-            cfile.save(destpath)
+            cfile.save(destpath.encode('ascii'))
         else:
             return cfile
 
     def download_file(self, srcfolder, srcfilename, destpath):
         cfile = cameraFile(self._cam, srcfolder, srcfilename)
-        cfile.save(destpath)
+        cfile.save(destpath.encode('ascii'))
         gp.gp_file_unref(cfile._cf)
 
     def trigger_capture(self):
@@ -351,7 +351,7 @@ class camera(object):
             for c in children:
                 self._list_config(c, cfglist, path + "." + c.name)
         else:
-            print path, "=", widget.value
+            print(path, "=", widget.value)
             cfglist.append(path)
 
     def list_config(self):
@@ -554,7 +554,7 @@ class cameraList(object):
         contents = ["%d: (%s, %s)" % (i, self.get_name(i), self.get_value(i))
             for i in range(self.count())]
 
-        return header + string.join(contents, "\n")
+        return header + '\n'.join(contents)
 
     def toList(self):
         return [(self.get_name(i), self.get_value(i)) for i in xrange(self.count())]
@@ -588,7 +588,7 @@ class cameraWidget(object):
 
     def __del__(self):
         # TODO fix this or find a good reason not to
-        #print "widget(%s) __del__" % self.name
+        #print("widget(%s) __del__" % self.name)
         #check(gp.gp_widget_unref(self._w))
         pass
 
@@ -761,7 +761,7 @@ class cameraWidget(object):
             return label + "\n" + info + "\n" + type
 
     def _pop(widget, simplewidget):
-        #print widget
+        #print(widget)
         for c in widget.children:
             simplechild = cameraWidgetSimple()
             if c.count_children():
@@ -771,8 +771,8 @@ class cameraWidget(object):
             else:
                 setattr(simplewidget, c.name, c)
 
-            #print c.name, simplewidget.__doc__
-        #print dir(simplewidget)
+            #print(c.name, simplewidget.__doc__)
+        #print(dir(simplewidget))
 
     def populate_children(self):
         simplewidget = cameraWidgetSimple()
