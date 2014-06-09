@@ -42,7 +42,7 @@ def library_version(verbose = True):
     return v
 
 import os, string, time
-from piggyphoto.ptp import *
+from .ptp import *
 
 PTR = ctypes.pointer
 
